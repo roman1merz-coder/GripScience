@@ -154,10 +154,10 @@ export default function ShoeSelector() {
     setAdvancedFilters(defaultAdvancedFilters);
   };
   
-  const hasActiveFilters = 
+const hasActiveFilters = 
     Object.values(guidedFilters).some(v => v !== null) ||
     Object.entries(advancedFilters).some(([key, value]) => {
-      if (key === 'priceRange') return value[0] > 50 || value[1] < 250;
+      if (key === 'priceRange' && Array.isArray(value)) return value[0] > 50 || value[1] < 250;
       if (key === 'vegan') return value !== null;
       if (Array.isArray(value)) return value.length > 0;
       return false;
