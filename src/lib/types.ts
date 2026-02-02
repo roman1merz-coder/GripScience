@@ -7,7 +7,7 @@ export type Shoe = {
   image_url: string | null;
   downturn: 'flat' | 'moderate' | 'aggressive';
   closure: 'lace' | 'velcro' | 'slipper';
-  volume: 'low' | 'medium' | 'high';
+  volume: 'low' | 'medium' | 'high' | 'standard';
   width: 'narrow' | 'medium' | 'wide';
   heel: 'narrow' | 'medium' | 'wide';
   toe_patch: 'small' | 'medium' | 'large';
@@ -33,6 +33,30 @@ export type Shoe = {
     fit: string;
   } | null;
   vegan: boolean;
+  // New foot shape columns
+  toe_box_width: 'narrow' | 'medium' | 'wide' | null;
+  heel_fit: 'narrow' | 'medium' | 'wide' | null;
+  instep_height: 'low' | 'medium' | 'high' | null;
+  gender: 'mens' | 'womens' | 'unisex' | null;
+  fit_notes: string | null;
+};
+
+// Toe form types
+export type ToeForm = 'egyptian' | 'roman' | 'greek' | 'germanic' | 'celtic';
+
+// Foot shape filter types
+export type FootShapeFilters = {
+  toeForm: ToeForm[];
+  footWidth: ('narrow' | 'medium' | 'wide')[];
+  instepHeight: ('low' | 'medium' | 'high')[];
+  heelVolume: ('small' | 'medium' | 'large')[];
+};
+
+export const defaultFootShapeFilters: FootShapeFilters = {
+  toeForm: [],
+  footWidth: [],
+  instepHeight: [],
+  heelVolume: [],
 };
 
 // Shoe with match score

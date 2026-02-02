@@ -4,12 +4,14 @@ import type {
   MatchDetail,
   GuidedFilters, 
   AdvancedFilters,
+  FootShapeFilters,
   RockType,
   WallAngle,
   FootholdType,
   UseCase,
   Sensitivity,
-  SkillLevel
+  SkillLevel,
+  ToeForm
 } from './types';
 
 // ============================================
@@ -267,6 +269,274 @@ function scoreSensitivity(shoe: Shoe, targetSensitivity: Sensitivity): { points:
 }
 
 // ============================================
+// FOOT SHAPE SCORING
+// ============================================
+
+// Toe form → asymmetry mapping (downturn excluded per design)
+function scoreToeForm(shoe: Shoe, toeForms: ToeForm[]): { points: number; maxPoints: number; matched: boolean; partial: boolean } {
+  if (toeForms.length === 0) {
+    return { points: 0, maxPoints: 0, matched: false, partial: false };
+  }
+
+  const maxPoints = 15;
+  let bestScore = 0;
+
+  // Get asymmetry from shoe (map database values to scoring values)
+  const asymmetry = shoe.asymmetry || 'slight';
+  const isLV = shoe.model?.toLowerCase().includes('lv') || shoe.volume === 'low';
+  const toeBoxWidth = shoe.toe_box_width || shoe.width || 'medium';
+
+  for (const toeForm of toeForms) {
+    let score = 0;
+
+    switch (toeForm) {
+      case 'egyptian':
+        // Big toe longest - best with high asymmetry, narrow toe box
+        if (asymmetry === 'strong') score = 15;
+        else if (asymmetry === 'slight') score = 10;
+        else score = 5;
+        if (toeBoxWidth === 'narrow') score += 2;
+        break;
+
+      case 'roman':
+        // First 2-3 toes equal - best with low asymmetry, wide toe box
+        if (asymmetry === 'none') score = 15;
+        else if (asymmetry === 'slight') score = 10;
+        else score = 3; // High asymmetry is bad for Roman
+        if (toeBoxWidth === 'wide') score += 3;
+        break;
+
+      case 'greek':
+        // Second toe longest - moderate asymmetry
+        if (asymmetry === 'slight') score = 15;
+        else if (asymmetry === 'strong') score = 10;
+        else score = 8;
+        break;
+
+      case 'germanic':
+        // Big toe longest, others equal - needs wider toe box
+        if (asymmetry === 'slight') score = 12;
+        else if (asymmetry === 'none') score = 10;
+        else score = 5;
+        if (toeBoxWidth === 'wide') score += 3;
+        if (toeBoxWidth === 'medium') score += 1;
+        break;
+
+      case 'celtic':
+        // Second toe longest, others vary - moderate asymmetry, some width
+        if (asymmetry === 'slight') score = 13;
+        else if (asymmetry === 'strong') score = 8;
+        else score = 8;
+        if (toeBoxWidth === 'medium' || toeBoxWidth === 'wide') score += 2;
+        break;
+    }
+
+    bestScore = Math.max(bestScore, Math.min(score, maxPoints));
+  }
+
+  const percentage = bestScore / maxPoints;
+  return {
+    points: bestScore,
+    maxPoints,
+    matched: percentage >= 0.75,
+    partial: percentage >= 0.5 && percentage < 0.75,
+  };
+}
+
+function scoreFootWidth(shoe: Shoe, widths: string[]): { points: number; maxPoints: number; matched: boolean; partial: boolean } {
+  if (widths.length === 0) {
+    return { points: 0, maxPoints: 0, matched: false, partial: false };
+  }
+
+  const maxPoints = 15;
+  let bestScore = 0;
+  
+  const isLV = shoe.model?.toLowerCase().includes('lv') || shoe.volume === 'low';
+  const isHV = shoe.model?.toLowerCase().includes('hv') || shoe.volume === 'high';
+  const toeBoxWidth = shoe.toe_box_width || shoe.width || 'medium';
+  const isLeather = shoe.rubber_type?.toLowerCase().includes('leather');
+
+  for (const width of widths) {
+    let score = 0;
+
+    switch (width) {
+      case 'narrow':
+        if (isLV) score = 15;
+        else if (toeBoxWidth === 'narrow') score = 12;
+        else if (toeBoxWidth === 'medium') score = 6;
+        else score = 2;
+        break;
+
+      case 'medium':
+        if (toeBoxWidth === 'medium' && !isLV && !isHV) score = 15;
+        else if (toeBoxWidth === 'medium') score = 12;
+        else score = 8;
+        break;
+
+      case 'wide':
+        if (isHV) score = 15;
+        else if (toeBoxWidth === 'wide') score = 13;
+        else if (isLeather) score += 3; // Leather stretches
+        else if (toeBoxWidth === 'medium') score = 6;
+        if (isLV) score = Math.max(0, score - 5); // LV is bad for wide feet
+        break;
+    }
+
+    bestScore = Math.max(bestScore, Math.min(score, maxPoints));
+  }
+
+  const percentage = bestScore / maxPoints;
+  return {
+    points: bestScore,
+    maxPoints,
+    matched: percentage >= 0.75,
+    partial: percentage >= 0.5 && percentage < 0.75,
+  };
+}
+
+function scoreInstepHeight(shoe: Shoe, heights: string[]): { points: number; maxPoints: number; matched: boolean; partial: boolean } {
+  if (heights.length === 0) {
+    return { points: 0, maxPoints: 0, matched: false, partial: false };
+  }
+
+  const maxPoints = 15;
+  let bestScore = 0;
+  
+  const isLV = shoe.model?.toLowerCase().includes('lv') || shoe.volume === 'low';
+  const isHV = shoe.model?.toLowerCase().includes('hv') || shoe.volume === 'high';
+  const instep = shoe.instep_height || 'medium';
+  const closure = shoe.closure || 'velcro';
+
+  for (const height of heights) {
+    let score = 0;
+
+    switch (height) {
+      case 'low':
+        if (isLV) score = 15;
+        else if (instep === 'low') score = 13;
+        else if (closure === 'slipper') score = 10;
+        else if (instep === 'medium') score = 6;
+        else score = 2;
+        break;
+
+      case 'medium':
+        if (instep === 'medium' && !isLV && !isHV) score = 15;
+        else if (instep === 'medium') score = 12;
+        else score = 8;
+        break;
+
+      case 'high':
+        if (isHV) score = 15;
+        else if (instep === 'high') score = 13;
+        else if (instep === 'medium') score = 8;
+        if (isLV) score = Math.max(0, score - 5); // LV is bad for high instep
+        break;
+    }
+
+    bestScore = Math.max(bestScore, Math.min(score, maxPoints));
+  }
+
+  const percentage = bestScore / maxPoints;
+  return {
+    points: bestScore,
+    maxPoints,
+    matched: percentage >= 0.75,
+    partial: percentage >= 0.5 && percentage < 0.75,
+  };
+}
+
+function scoreHeelVolume(shoe: Shoe, volumes: string[]): { points: number; maxPoints: number; matched: boolean; partial: boolean } {
+  if (volumes.length === 0) {
+    return { points: 0, maxPoints: 0, matched: false, partial: false };
+  }
+
+  const maxPoints = 15;
+  let bestScore = 0;
+  
+  const isLV = shoe.model?.toLowerCase().includes('lv') || shoe.volume === 'low';
+  const isHV = shoe.model?.toLowerCase().includes('hv') || shoe.volume === 'high';
+  const isWomens = shoe.gender === 'womens';
+  const heelFit = shoe.heel_fit || shoe.heel || 'medium';
+
+  for (const volume of volumes) {
+    let score = 0;
+
+    switch (volume) {
+      case 'small':
+        if (isLV) score = 15;
+        else if (isWomens) score = 13;
+        else if (heelFit === 'narrow') score = 12;
+        else if (heelFit === 'medium') score = 6;
+        else score = 2;
+        break;
+
+      case 'medium':
+        if (heelFit === 'medium' && !isLV && !isHV) score = 15;
+        else if (heelFit === 'medium') score = 12;
+        else score = 8;
+        break;
+
+      case 'large':
+        if (isHV) score = 15;
+        else if (heelFit === 'wide') score = 13;
+        else if (heelFit === 'medium') score = 8;
+        if (isLV) score = Math.max(0, score - 5); // LV is bad for large heels
+        break;
+    }
+
+    bestScore = Math.max(bestScore, Math.min(score, maxPoints));
+  }
+
+  const percentage = bestScore / maxPoints;
+  return {
+    points: bestScore,
+    maxPoints,
+    matched: percentage >= 0.75,
+    partial: percentage >= 0.5 && percentage < 0.75,
+  };
+}
+
+function scoreFootShapeFilters(shoe: Shoe, filters: FootShapeFilters): { points: number; maxPoints: number; details: MatchDetail[] } {
+  const details: MatchDetail[] = [];
+  let points = 0;
+  let maxPoints = 0;
+
+  // Toe form
+  const toeResult = scoreToeForm(shoe, filters.toeForm);
+  if (toeResult.maxPoints > 0) {
+    points += toeResult.points;
+    maxPoints += toeResult.maxPoints;
+    details.push({ category: 'Toe Form', ...toeResult });
+  }
+
+  // Foot width
+  const widthResult = scoreFootWidth(shoe, filters.footWidth);
+  if (widthResult.maxPoints > 0) {
+    points += widthResult.points;
+    maxPoints += widthResult.maxPoints;
+    details.push({ category: 'Foot Width', ...widthResult });
+  }
+
+  // Instep height
+  const instepResult = scoreInstepHeight(shoe, filters.instepHeight);
+  if (instepResult.maxPoints > 0) {
+    points += instepResult.points;
+    maxPoints += instepResult.maxPoints;
+    details.push({ category: 'Instep Height', ...instepResult });
+  }
+
+  // Heel volume
+  const heelResult = scoreHeelVolume(shoe, filters.heelVolume);
+  if (heelResult.maxPoints > 0) {
+    points += heelResult.points;
+    maxPoints += heelResult.maxPoints;
+    details.push({ category: 'Heel Volume', ...heelResult });
+  }
+
+  return { points, maxPoints, details };
+}
+
+// ============================================
 // ADVANCED FILTER MATCHING
 // ============================================
 
@@ -336,7 +606,14 @@ function scoreAdvancedFilters(shoe: Shoe, filters: AdvancedFilters): { points: n
 // MAIN SCORING FUNCTION
 // ============================================
 
-export function scoreShoe(shoe: Shoe, guidedFilters: GuidedFilters, advancedFilters: AdvancedFilters): ScoredShoe {
+import { defaultFootShapeFilters } from './types';
+
+export function scoreShoe(
+  shoe: Shoe, 
+  guidedFilters: GuidedFilters, 
+  advancedFilters: AdvancedFilters,
+  footShapeFilters: FootShapeFilters = defaultFootShapeFilters
+): ScoredShoe {
   const matchDetails: MatchDetail[] = [];
   let totalPoints = 0;
   let totalMaxPoints = 0;
@@ -384,6 +661,12 @@ export function scoreShoe(shoe: Shoe, guidedFilters: GuidedFilters, advancedFilt
     matchDetails.push({ category: 'Sensitivity', ...result });
   }
   
+  // Foot shape filters
+  const footShapeResult = scoreFootShapeFilters(shoe, footShapeFilters);
+  totalPoints += footShapeResult.points;
+  totalMaxPoints += footShapeResult.maxPoints;
+  matchDetails.push(...footShapeResult.details);
+  
   // Advanced filters
   const advancedResult = scoreAdvancedFilters(shoe, advancedFilters);
   totalPoints += advancedResult.points;
@@ -403,8 +686,13 @@ export function scoreShoe(shoe: Shoe, guidedFilters: GuidedFilters, advancedFilt
   };
 }
 
-export function rankShoes(shoes: Shoe[], guidedFilters: GuidedFilters, advancedFilters: AdvancedFilters): ScoredShoe[] {
-  const scoredShoes = shoes.map(shoe => scoreShoe(shoe, guidedFilters, advancedFilters));
+export function rankShoes(
+  shoes: Shoe[], 
+  guidedFilters: GuidedFilters, 
+  advancedFilters: AdvancedFilters,
+  footShapeFilters: FootShapeFilters = defaultFootShapeFilters
+): ScoredShoe[] {
+  const scoredShoes = shoes.map(shoe => scoreShoe(shoe, guidedFilters, advancedFilters, footShapeFilters));
   
   // Sort by match score descending
   scoredShoes.sort((a, b) => b.matchScore - a.matchScore);

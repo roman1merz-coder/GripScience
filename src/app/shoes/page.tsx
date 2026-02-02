@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { rankShoes } from '@/lib/shoe-matcher';
 import { ShoeCard } from '@/components/ShoeCard';
 import { FilterGroup, MultiSelectFilter, PriceRangeFilter, VeganFilter } from '@/components/Filters';
-import type { Shoe, ScoredShoe, GuidedFilters, AdvancedFilters } from '@/lib/types';
-import { defaultGuidedFilters, defaultAdvancedFilters } from '@/lib/types';
+import { FootShapeFilter } from '@/components/FootShapeFilter';
+import type { Shoe, ScoredShoe, GuidedFilters, AdvancedFilters, FootShapeFilters } from '@/lib/types';
+import { defaultGuidedFilters, defaultAdvancedFilters, defaultFootShapeFilters } from '@/lib/types';
 
+// Filter options
 const ROCK_TYPES = [
   { value: 'limestone', label: 'Limestone' },
   { value: 'granite', label: 'Granite' },
@@ -52,6 +54,7 @@ const SENSITIVITIES = [
   { value: 'very_supportive', label: 'Very Supportive' },
 ];
 
+// Advanced filter options
 const DOWNTURNS = [
   { value: 'flat', label: 'Flat' },
   { value: 'moderate', label: 'Moderate' },
@@ -121,7 +124,9 @@ export default function ShoeSelector() {
   
   const [guidedFilters, setGuidedFilters] = useState<GuidedFilters>(defaultGuidedFilters);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(defaultAdvancedFilters);
+  const [footShapeFilters, setFootShapeFilters] = useState<FootShapeFilters>(defaultFootShapeFilters);
   
+  // Fetch shoes from Supabase
   useEffect(() => {
     async function fetchShoes() {
       const { data, error } = await supabase.from('shoes').select('*');
@@ -135,39 +140,39 @@ export default function ShoeSelector() {
     fetchShoes();
   }, []);
   
+  // Re-rank shoes when filters change
   useEffect(() => {
     if (shoes.length > 0) {
-      const ranked = rankShoes(shoes, guidedFilters, advancedFilters);
+      const ranked = rankShoes(shoes, guidedFilters, advancedFilters, footShapeFilters);
       setRankedShoes(ranked);
     }
-  }, [shoes, guidedFilters, advancedFilters]);
+  }, [shoes, guidedFilters, advancedFilters, footShapeFilters]);
   
+  // Get unique brands for filter
   const brands = [...new Set(shoes.map(s => s.brand))].map(b => ({ value: b, label: b }));
   
   const clearAllFilters = () => {
     setGuidedFilters(defaultGuidedFilters);
     setAdvancedFilters(defaultAdvancedFilters);
+    setFootShapeFilters(defaultFootShapeFilters);
   };
   
   const hasActiveFilters = 
     Object.values(guidedFilters).some(v => v !== null) ||
-    advancedFilters.downturn.length > 0 ||
-    advancedFilters.closure.length > 0 ||
-    advancedFilters.rubberHardness.length > 0 ||
-    advancedFilters.rubberThickness.length > 0 ||
-    advancedFilters.midsole.length > 0 ||
-    advancedFilters.volume.length > 0 ||
-    advancedFilters.width.length > 0 ||
-    advancedFilters.heel.length > 0 ||
-    advancedFilters.toePatch.length > 0 ||
-    advancedFilters.asymmetry.length > 0 ||
-    advancedFilters.brand.length > 0 ||
-    advancedFilters.priceRange[0] > 50 ||
-    advancedFilters.priceRange[1] < 250 ||
-    advancedFilters.vegan !== null;
+    Object.entries(advancedFilters).some(([key, value]) => {
+      if (key === 'priceRange') return value[0] > 50 || value[1] < 250;
+      if (key === 'vegan') return value !== null;
+      if (Array.isArray(value)) return value.length > 0;
+      return false;
+    }) ||
+    footShapeFilters.toeForm.length > 0 ||
+    footShapeFilters.footWidth.length > 0 ||
+    footShapeFilters.instepHeight.length > 0 ||
+    footShapeFilters.heelVolume.length > 0;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-grip-50 to-white">
+      {/* Header */}
       <div className="bg-grip-500 text-white py-8">
         <div className="max-w-7xl mx-auto px-4">
           <h1 className="text-3xl font-bold mb-2">Shoe Selector</h1>
@@ -177,6 +182,7 @@ export default function ShoeSelector() {
       
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Filters Panel */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-md p-6 sticky top-4">
               <div className="flex justify-between items-center mb-6">
@@ -191,6 +197,7 @@ export default function ShoeSelector() {
                 )}
               </div>
               
+              {/* Guided Filters */}
               <FilterGroup
                 title="Rock Type"
                 options={ROCK_TYPES}
@@ -233,6 +240,13 @@ export default function ShoeSelector() {
                 onChange={(v) => setGuidedFilters({ ...guidedFilters, sensitivity: v as any })}
               />
               
+              {/* Foot Shape Filter */}
+              <FootShapeFilter
+                filters={footShapeFilters}
+                onChange={setFootShapeFilters}
+              />
+              
+              {/* Advanced Filters Toggle */}
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="w-full py-3 text-sm font-medium text-grip-500 hover:text-grip-600 border-t mt-4 pt-4 flex justify-between items-center"
@@ -338,11 +352,26 @@ export default function ShoeSelector() {
             </div>
           </div>
           
+          {/* Results */}
           <div className="lg:col-span-3">
             <div className="mb-4 flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-900">
                 {loading ? 'Loading...' : `Top ${rankedShoes.length} matches`}
               </h2>
+              {hasActiveFilters && (
+                <span className="text-sm text-gray-500">
+                  Filtered by {
+                    Object.values(guidedFilters).filter(v => v !== null).length + 
+                    Object.values(advancedFilters).filter(v => 
+                      Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined
+                    ).length +
+                    footShapeFilters.toeForm.length +
+                    footShapeFilters.footWidth.length +
+                    footShapeFilters.instepHeight.length +
+                    footShapeFilters.heelVolume.length
+                  } criteria
+                </span>
+              )}
             </div>
             
             {loading ? (
